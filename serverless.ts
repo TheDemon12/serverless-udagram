@@ -6,6 +6,7 @@ import {
 	createGroup,
 	getImages,
 	getImage,
+	createImage,
 } from "@functions/index";
 
 const serverlessConfiguration: AWS = {
@@ -44,7 +45,7 @@ const serverlessConfiguration: AWS = {
 			},
 			{
 				Effect: "Allow",
-				Action: ["dynamodb:Query"],
+				Action: ["dynamodb:Query", "dynamodb:PutItem"],
 				Resource:
 					"arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.IMAGES_TABLE}",
 			},
@@ -58,7 +59,14 @@ const serverlessConfiguration: AWS = {
 	},
 
 	// import the function via paths
-	functions: { hello, getGroups, createGroup, getImages, getImage },
+	functions: {
+		hello,
+		getGroups,
+		createGroup,
+		getImages,
+		getImage,
+		createImage,
+	},
 
 	resources: {
 		Resources: {
