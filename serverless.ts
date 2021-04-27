@@ -7,7 +7,8 @@ import {
 	getImages,
 	getImage,
 	createImage,
-} from "@functions/index";
+} from "@functions/http";
+import { sendNotifications } from "@functions/s3";
 
 const serverlessConfiguration: AWS = {
 	service: "somegram",
@@ -34,6 +35,7 @@ const serverlessConfiguration: AWS = {
 			GROUPS_TABLE: "Groups-${self:provider.stage}",
 			IMAGES_TABLE: "Images-${self:provider.stage}",
 			IMAGE_ID_INDEX: "ImageIdIndex",
+			IMAGE_BUCKET: "somegram-images-${self:provider.stage}",
 		},
 		lambdaHashingVersion: "20201221",
 		iamRoleStatements: [
@@ -55,6 +57,11 @@ const serverlessConfiguration: AWS = {
 				Resource:
 					"arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.IMAGES_TABLE}/index/${self:provider.environment.IMAGE_ID_INDEX}",
 			},
+			{
+				Effect: "Allow",
+				Action: ["s3:PutObject", "s3:GetObject"],
+				Resource: "arn:aws:s3:::${self:provider.environment.IMAGE_BUCKET}/*",
+			},
 		],
 	},
 
@@ -66,6 +73,7 @@ const serverlessConfiguration: AWS = {
 		getImages,
 		getImage,
 		createImage,
+		sendNotifications,
 	},
 
 	resources: {
@@ -100,6 +108,70 @@ const serverlessConfiguration: AWS = {
 					],
 					BillingMode: "PAY_PER_REQUEST",
 					TableName: "${self:provider.environment.IMAGES_TABLE}",
+				},
+			},
+			ImageBucket: {
+				Type: "AWS::S3::Bucket",
+				Properties: {
+					BucketName: "${self:provider.environment.IMAGE_BUCKET}",
+					NotificationConfiguration: {
+						LambdaConfigurations: [
+							{
+								Event: "s3:ObjectCreated:*",
+								Function: {
+									"Fn::GetAtt": ["SendNotificationsLambdaFunction", "Arn"],
+								},
+							},
+						],
+					},
+					CorsConfiguration: {
+						CorsRules: [
+							{
+								AllowedOrigins: ["*"],
+								AllowedHeaders: ["*"],
+								AllowedMethods: ["GET", "PUT", "POST", "DELETE", "HEAD"],
+								MaxAge: "3000",
+							},
+						],
+					},
+				},
+			},
+
+			SendNotificationsPermission: {
+				Type: "AWS::Lambda::Permission",
+				Properties: {
+					FunctionName: {
+						Ref: "SendNotificationsLambdaFunction",
+					},
+					Principal: "s3.amazonaws.com",
+					Action: "lambda:InvokeFunction",
+					SourceAccount: {
+						Ref: "AWS::AccountId",
+					},
+					SourceArn: "arn:aws:s3:::${self:provider.environment.IMAGE_BUCKET}",
+				},
+			},
+
+			BucketPolicy: {
+				Type: "AWS::S3::BucketPolicy",
+				Properties: {
+					PolicyDocument: {
+						Id: "MyPolicy",
+						Version: "2012-10-17",
+						Statement: [
+							{
+								Sid: "PublicReadForGetBucketObjects",
+								Effect: "Allow",
+								Principal: "*",
+								Action: "s3:GetObject",
+								Resource:
+									"arn:aws:s3:::${self:provider.environment.IMAGE_BUCKET}/*",
+							},
+						],
+					},
+					Bucket: {
+						Ref: "ImageBucket",
+					},
 				},
 			},
 		},
