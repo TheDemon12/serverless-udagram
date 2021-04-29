@@ -9,6 +9,7 @@ import {
 	createImage,
 } from "@functions/http";
 import { sendNotifications } from "@functions/s3";
+import { connect, disconnect } from "@functions/webSockets";
 
 const serverlessConfiguration: AWS = {
 	service: "somegram",
@@ -36,6 +37,7 @@ const serverlessConfiguration: AWS = {
 			IMAGES_TABLE: "Images-${self:provider.stage}",
 			IMAGE_ID_INDEX: "ImageIdIndex",
 			IMAGE_BUCKET: "somegram-images-${self:provider.stage}",
+			CONNECTIONS_TABLE: "Connections-${self:provider.stage}",
 		},
 		lambdaHashingVersion: "20201221",
 		iamRoleStatements: [
@@ -62,6 +64,12 @@ const serverlessConfiguration: AWS = {
 				Action: ["s3:PutObject", "s3:GetObject"],
 				Resource: "arn:aws:s3:::${self:provider.environment.IMAGE_BUCKET}/*",
 			},
+			{
+				Effect: "Allow",
+				Action: ["dynamodb:Scan", "dynamodb:PutItem", "dynamodb:DeleteItem"],
+				Resource:
+					"arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CONNECTIONS_TABLE}",
+			},
 		],
 	},
 
@@ -74,6 +82,8 @@ const serverlessConfiguration: AWS = {
 		getImage,
 		createImage,
 		sendNotifications,
+		connect,
+		disconnect,
 	},
 
 	resources: {
@@ -134,6 +144,15 @@ const serverlessConfiguration: AWS = {
 							},
 						],
 					},
+				},
+			},
+			ConnectionsDynamoDBTable: {
+				Type: "AWS::DynamoDB::Table",
+				Properties: {
+					AttributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
+					KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+					BillingMode: "PAY_PER_REQUEST",
+					TableName: "${self:provider.environment.CONNECTIONS_TABLE}",
 				},
 			},
 
