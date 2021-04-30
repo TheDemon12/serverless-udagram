@@ -10,6 +10,7 @@ import {
 } from "@functions/http";
 import { sendNotifications } from "@functions/s3";
 import { connect, disconnect } from "@functions/webSockets";
+import { syncWithElasticSearch } from "@functions/dynamoDB";
 
 const serverlessConfiguration: AWS = {
 	service: "somegram",
@@ -84,6 +85,7 @@ const serverlessConfiguration: AWS = {
 		sendNotifications,
 		connect,
 		disconnect,
+		syncWithElasticSearch,
 	},
 
 	resources: {
@@ -117,6 +119,9 @@ const serverlessConfiguration: AWS = {
 						},
 					],
 					BillingMode: "PAY_PER_REQUEST",
+					StreamSpecification: {
+						StreamViewType: "NEW_IMAGE",
+					},
 					TableName: "${self:provider.environment.IMAGES_TABLE}",
 				},
 			},
@@ -190,6 +195,59 @@ const serverlessConfiguration: AWS = {
 					},
 					Bucket: {
 						Ref: "ImageBucket",
+					},
+				},
+			},
+
+			ImagesSearch: {
+				Type: "AWS::Elasticsearch::Domain",
+				Properties: {
+					ElasticsearchVersion: "6.3",
+					DomainName: "images-search-${self:provider.stage}",
+					ElasticsearchClusterConfig: {
+						DedicatedMasterEnabled: false,
+						InstanceCount: "1",
+						ZoneAwarenessEnabled: false,
+						InstanceType: "t2.small.elasticsearch",
+					},
+					EBSOptions: {
+						EBSEnabled: true,
+						Iops: 0,
+						VolumeSize: 10,
+						VolumeType: "gp2",
+					},
+					AccessPolicies: {
+						Version: "2012-10-17",
+						Statement: [
+							{
+								Effect: "Allow",
+								Principal: {
+									AWS: {
+										"Fn::Sub":
+											"arn:aws:sts::${AWS::AccountId}:assumed-role/${self:service}-${self:provider.stage}-${self:provider.region}-lambdaRole/${self:service}-${self:provider.stage}-syncWithElasticSearch",
+									},
+								},
+								Action: "es:ESHttp*",
+								Resource: {
+									"Fn::Sub":
+										"arn:aws:es:${self:provider.region}:${AWS::AccountId}:domain/images-search-${self:provider.stage}/*",
+								},
+							},
+							{
+								Effect: "Allow",
+								Principal: { AWS: "*" },
+								Action: "es:ESHttp*",
+								Resource: {
+									"Fn::Sub":
+										"arn:aws:es:${self:provider.region}:${AWS::AccountId}:domain/images-search-${self:provider.stage}/*",
+								},
+								Condition: {
+									IpAddress: {
+										"aws:SourceIp": ["146.196.35.32/32"],
+									},
+								},
+							},
+						],
 					},
 				},
 			},
