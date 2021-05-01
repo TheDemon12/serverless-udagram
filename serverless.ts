@@ -8,7 +8,7 @@ import {
 	getImage,
 	createImage,
 } from "@functions/http";
-import { sendNotifications } from "@functions/s3";
+import { sendNotifications, imageResizer } from "@functions/s3";
 import { connect, disconnect } from "@functions/webSockets";
 import { syncWithElasticSearch } from "@functions/dynamoDB";
 
@@ -16,6 +16,7 @@ const serverlessConfiguration: AWS = {
 	service: "somegram",
 	frameworkVersion: "2",
 	custom: {
+		topicName: "imagesTopic-${self:provider.stage}",
 		webpack: {
 			webpackConfig: "./webpack.config.js",
 			includeModules: true,
@@ -39,6 +40,7 @@ const serverlessConfiguration: AWS = {
 			IMAGE_ID_INDEX: "ImageIdIndex",
 			IMAGE_BUCKET: "somegram-images-${self:provider.stage}",
 			CONNECTIONS_TABLE: "Connections-${self:provider.stage}",
+			THUMBNAIL_IMAGE_BUCKET: "somegram-thumbnails-${self:provider.stage}",
 		},
 		lambdaHashingVersion: "20201221",
 		iamRoleStatements: [
@@ -67,6 +69,12 @@ const serverlessConfiguration: AWS = {
 			},
 			{
 				Effect: "Allow",
+				Action: ["s3:PutObject", "s3:GetObject"],
+				Resource:
+					"arn:aws:s3:::${self:provider.environment.THUMBNAIL_IMAGE_BUCKET}/*",
+			},
+			{
+				Effect: "Allow",
 				Action: ["dynamodb:Scan", "dynamodb:PutItem", "dynamodb:DeleteItem"],
 				Resource:
 					"arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CONNECTIONS_TABLE}",
@@ -86,6 +94,7 @@ const serverlessConfiguration: AWS = {
 		connect,
 		disconnect,
 		syncWithElasticSearch,
+		imageResizer,
 	},
 
 	resources: {
@@ -130,15 +139,39 @@ const serverlessConfiguration: AWS = {
 				Properties: {
 					BucketName: "${self:provider.environment.IMAGE_BUCKET}",
 					NotificationConfiguration: {
-						LambdaConfigurations: [
+						// LambdaConfigurations: [
+						// 	{
+						// 		Event: "s3:ObjectCreated:*",
+						// 		Function: {
+						// 			"Fn::GetAtt": ["SendNotificationsLambdaFunction", "Arn"],
+						// 		},
+						// 	},
+						// ],
+						TopicConfigurations: [
 							{
-								Event: "s3:ObjectCreated:*",
-								Function: {
-									"Fn::GetAtt": ["SendNotificationsLambdaFunction", "Arn"],
+								Event: "s3:ObjectCreated:Put",
+								Topic: {
+									Ref: "ImagesTopic",
 								},
 							},
 						],
 					},
+					CorsConfiguration: {
+						CorsRules: [
+							{
+								AllowedOrigins: ["*"],
+								AllowedHeaders: ["*"],
+								AllowedMethods: ["GET", "PUT", "POST", "DELETE", "HEAD"],
+								MaxAge: "3000",
+							},
+						],
+					},
+				},
+			},
+			ThumbnailImageBucket: {
+				Type: "AWS::S3::Bucket",
+				Properties: {
+					BucketName: "${self:provider.environment.THUMBNAIL_IMAGE_BUCKET}",
 					CorsConfiguration: {
 						CorsRules: [
 							{
@@ -160,6 +193,41 @@ const serverlessConfiguration: AWS = {
 					TableName: "${self:provider.environment.CONNECTIONS_TABLE}",
 				},
 			},
+			ImagesTopic: {
+				Type: "AWS::SNS::Topic",
+				Properties: {
+					DisplayName: "Images bucket topic",
+					TopicName: "${self:custom.topicName}",
+				},
+			},
+
+			SNSTopicPolicy: {
+				Type: "AWS::SNS::TopicPolicy",
+				Properties: {
+					PolicyDocument: {
+						Version: "2012-10-17",
+						Statement: [
+							{
+								Effect: "Allow",
+								Principal: "*",
+								Action: "sns:Publish",
+								Resource: { Ref: "ImagesTopic" },
+								Condition: {
+									ArnLike: {
+										"AWS:SourceArn":
+											"arn:aws:s3:::${self:provider.environment.IMAGE_BUCKET}",
+									},
+								},
+							},
+						],
+					},
+					Topics: [
+						{
+							Ref: "ImagesTopic",
+						},
+					],
+				},
+			},
 
 			SendNotificationsPermission: {
 				Type: "AWS::Lambda::Permission",
@@ -176,7 +244,7 @@ const serverlessConfiguration: AWS = {
 				},
 			},
 
-			BucketPolicy: {
+			ImagesBucketPolicy: {
 				Type: "AWS::S3::BucketPolicy",
 				Properties: {
 					PolicyDocument: {
@@ -195,6 +263,29 @@ const serverlessConfiguration: AWS = {
 					},
 					Bucket: {
 						Ref: "ImageBucket",
+					},
+				},
+			},
+
+			ThumbnailImagesBucketPolicy: {
+				Type: "AWS::S3::BucketPolicy",
+				Properties: {
+					PolicyDocument: {
+						Id: "MyPolicy",
+						Version: "2012-10-17",
+						Statement: [
+							{
+								Sid: "PublicReadForGetBucketObjects",
+								Effect: "Allow",
+								Principal: "*",
+								Action: "s3:GetObject",
+								Resource:
+									"arn:aws:s3:::${self:provider.environment.THUMBNAIL_IMAGE_BUCKET}/*",
+							},
+						],
+					},
+					Bucket: {
+						Ref: "ThumbnailImageBucket",
 					},
 				},
 			},

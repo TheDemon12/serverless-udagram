@@ -1,5 +1,5 @@
 import { middyfy } from "@libs/lambda";
-import { S3Event, S3Handler } from "aws-lambda";
+import { S3Event, S3Handler, SNSEvent, SNSHandler } from "aws-lambda";
 import { ApiGatewayManagementApi, DynamoDB } from "aws-sdk";
 
 const apiID = process.env.API_ID;
@@ -15,7 +15,15 @@ const connectionParams = {
 
 const apiGateway = new ApiGatewayManagementApi(connectionParams);
 
-const handler: S3Handler = async (event: S3Event) => {
+const handler: SNSHandler = async (event) => {
+	for (const snsRecord of event.Records) {
+		const S3Event: S3Event = JSON.parse(snsRecord.Sns.Message);
+
+		await processS3Event(S3Event);
+	}
+};
+
+const processS3Event = async (event: S3Event) => {
 	for (const record of event.Records) {
 		const key = record.s3.object.key;
 		console.log("Processing S3 item with key: ", key);
