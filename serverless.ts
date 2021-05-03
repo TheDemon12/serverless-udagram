@@ -42,8 +42,6 @@ const serverlessConfiguration: AWS = {
 			IMAGE_BUCKET: "somegram-images-${self:provider.stage}",
 			CONNECTIONS_TABLE: "Connections-${self:provider.stage}",
 			THUMBNAIL_IMAGE_BUCKET: "somegram-thumbnails-${self:provider.stage}",
-			AUTH0_SECRET_ID: "Auth0Secret-${self:provider.stage}",
-			AUTH0_SECRET_FIELD: "auth0Secret",
 		},
 		lambdaHashingVersion: "20201221",
 		iamRoleStatements: [
@@ -81,20 +79,6 @@ const serverlessConfiguration: AWS = {
 				Action: ["dynamodb:Scan", "dynamodb:PutItem", "dynamodb:DeleteItem"],
 				Resource:
 					"arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CONNECTIONS_TABLE}",
-			},
-			{
-				Effect: "Allow",
-				Action: ["secretsmanager:GetSecretValue"],
-				Resource: {
-					Ref: "Auth0Secret",
-				},
-			},
-			{
-				Effect: "Allow",
-				Action: ["kms:Decrypt"],
-				Resource: {
-					"Fn::GetAtt": ["KMSKey", "Arn"],
-				},
 			},
 		],
 	},
@@ -357,60 +341,6 @@ const serverlessConfiguration: AWS = {
 								},
 							},
 						],
-					},
-				},
-			},
-
-			KMSKey: {
-				Type: "AWS::KMS::Key",
-				Properties: {
-					Description: "KMS key to encrypt Auth0 secret",
-					KeyPolicy: {
-						Version: "2012-10-17",
-						Id: "key-default-1",
-						Statement: [
-							{
-								Sid: "Allow administration of the key",
-								Effect: "Allow",
-								Principal: {
-									AWS: {
-										"Fn::Join": [
-											":",
-											[
-												"arn:aws:iam:",
-												{
-													Ref: "AWS::AccountId",
-												},
-												"root",
-											],
-										],
-									},
-								},
-								Action: ["kms:*"],
-								Resource: "*",
-							},
-						],
-					},
-				},
-			},
-
-			KMSKeyAlias: {
-				Type: "AWS::KMS::Alias",
-				Properties: {
-					AliasName: "alias/auth0-Key-${self:provider.stage}",
-					TargetKeyId: {
-						Ref: "KMSKey",
-					},
-				},
-			},
-
-			Auth0Secret: {
-				Type: "AWS::SecretsManager::Secret",
-				Properties: {
-					Name: "${self:provider.environment.AUTH0_SECRET_ID}",
-					Description: "Auth0 secret",
-					KmsKeyId: {
-						Ref: "KMSKey",
 					},
 				},
 			},
