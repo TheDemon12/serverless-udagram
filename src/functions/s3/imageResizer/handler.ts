@@ -1,4 +1,3 @@
-import { DocumentClient } from "aws-sdk/clients/dynamodb";
 import { middyfy } from "@libs/lambda";
 import { S3Event, SNSHandler } from "aws-lambda";
 import Jimp from "jimp";

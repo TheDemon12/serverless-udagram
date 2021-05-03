@@ -1,3 +1,5 @@
+import { getUserId } from "./../../auth/utils";
+
 import "source-map-support/register";
 
 import type { ValidatedEventAPIGatewayProxyEvent } from "@libs/apiGateway";
@@ -17,8 +19,14 @@ const hello: ValidatedEventAPIGatewayProxyEvent<typeof schema> = async (
 	const itemId = uuid.v4();
 	const body = event.body;
 
+	const authorizationHeader = event.headers.Authorization;
+	const jwtToken = authorizationHeader.split(" ")[1];
+
+	const userId = getUserId(jwtToken);
+
 	const newItem = {
 		id: itemId,
+		userId,
 		...body,
 	};
 
